@@ -11,20 +11,25 @@ STATE_FILE = Path("state.json")
 HEADERS = {"Authorization": f"Bearer {BEARER_TOKEN}"}
 
 
-def get_user_id(username: str, state: dict) -> str:
-    cached = state.setdefault("user_ids", {}).get(username)
-    if cached:
-        return cached
+def get_user_info(username: str, state: dict) -> tuple[str, str]:
+    user_id = state.setdefault("user_ids", {}).get(username)
+    icon_url = state.setdefault("user_icons", {}).get(username)
+    if user_id and icon_url:
+        return user_id, icon_url
 
     res = requests.get(
         f"https://api.twitter.com/2/users/by/username/{username}",
         headers=HEADERS,
+        params={"user.fields": "profile_image_url"},
     )
     res.raise_for_status()
-    user_id = res.json()["data"]["id"]
+    data = res.json()["data"]
+    user_id = data["id"]
+    icon_url = data.get("profile_image_url", "").replace("_normal", "_400x400")
     state["user_ids"][username] = user_id
-    print(f"Fetched user ID for @{username}: {user_id}")
-    return user_id
+    state["user_icons"][username] = icon_url
+    print(f"Fetched user info for @{username}: {user_id}")
+    return user_id, icon_url
 
 
 def get_new_tweets(user_id: str, since_id: str | None) -> list[dict]:
@@ -45,12 +50,16 @@ def get_new_tweets(user_id: str, since_id: str | None) -> list[dict]:
     return res.json().get("data", [])
 
 
-def notify_discord(username: str, tweet: dict) -> None:
+def notify_discord(username: str, icon_url: str, tweet: dict) -> None:
     tweet_url = f"https://x.com/{username}/status/{tweet['id']}"
     payload = {
         "embeds": [
             {
-                "author": {"name": f"@{username}", "url": f"https://x.com/{username}"},
+                "author": {
+                    "name": f"@{username}",
+                    "url": f"https://x.com/{username}",
+                    "icon_url": icon_url,
+                },
                 "description": tweet["text"],
                 "url": tweet_url,
                 "color": 0x1D9BF0,
@@ -68,7 +77,7 @@ def main() -> None:
 
     for username in USERNAMES:
         try:
-            user_id = get_user_id(username, state)
+            user_id, icon_url = get_user_info(username, state)
             since_id = state.setdefault("last_ids", {}).get(username)
             tweets = get_new_tweets(user_id, since_id)
 
@@ -77,7 +86,7 @@ def main() -> None:
                 continue
 
             for tweet in reversed(tweets):
-                notify_discord(username, tweet)
+                notify_discord(username, icon_url, tweet)
 
             state["last_ids"][username] = tweets[0]["id"]
         except Exception as e:
