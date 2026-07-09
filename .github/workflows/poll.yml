@@ -30,8 +30,7 @@ jobs:
       - name: Poll tweets
         env:
           X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          TWITTER_USERNAMES: ${{ vars.TWITTER_USERNAMES }}
+          DISCORD_WEBHOOKS_JSON: ${{ secrets.DISCORD_WEBHOOKS_JSON }}
         run: python poll.py
 
       - name: Save state
